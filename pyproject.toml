@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "biofilm-analysis"
+version = "0.1.0"
+description = "Interactive analysis of 3D biofilm image stacks from ND2 files or labeled PNG stacks."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "nd2",
+    "numpy",
+    "pandas",
+    "pillow",
+    "plotly",
+    "scikit-image",
+    "scipy",
+    "streamlit",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
