@@ -11,7 +11,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from biofilm_analyzer.analysis import SegmentationOptions, analyze_biofilm
+from biofilm_analyzer.analysis import BiofilmAnalysisResult, SegmentationOptions, analyze_biofilm
 from biofilm_analyzer.demo import create_demo_stack
 from biofilm_analyzer.io import BiofilmStack, load_nd2_stack, load_png_stack
 
@@ -56,6 +56,8 @@ def main() -> None:
     except Exception as exc:
         st.error(f"Analysis failed: {exc}")
         return
+
+    _segmentation_preview_section(stack, result, live_channel, dead_channel)
 
     stats_df = _stats_dataframe(result.statistics.as_dict())
     left, right = st.columns([0.45, 0.55], gap="large")
@@ -332,6 +334,135 @@ def _segmentation_controls(
     )
 
 
+def _segmentation_preview_section(
+    stack: BiofilmStack,
+    result: BiofilmAnalysisResult,
+    live_channel: str,
+    dead_channel: str,
+) -> None:
+    st.subheader("Real-time segmentation preview")
+    st.caption(
+        "Adjust the sidebar segmentation controls and inspect this slice preview. "
+        "Streamlit reruns the analysis automatically after each choice."
+    )
+
+    controls, display = st.columns([0.28, 0.72], gap="large")
+    with controls:
+        z_index = st.slider(
+            "Preview z-slice",
+            min_value=0,
+            max_value=stack.shape[0] - 1,
+            value=stack.shape[0] // 2,
+            help="Choose the optical section to inspect while tuning segmentation.",
+        )
+        preview_mode = st.radio(
+            "Preview mode",
+            ["Merged overlay", "Live overlay", "Dead overlay", "Raw channels"],
+        )
+        overlay_opacity = st.slider("Mask overlay opacity", 0.05, 1.0, 0.45, 0.05)
+        lower_percentile, upper_percentile = st.slider(
+            "Display contrast percentiles",
+            min_value=0,
+            max_value=100,
+            value=(1, 99),
+            help="Display-only contrast stretch; does not change segmentation.",
+        )
+
+        z_um = z_index * stack.voxel_size_um[0]
+        live_slice_fraction = float(result.live.mask[z_index].mean())
+        dead_slice_fraction = float(result.dead.mask[z_index].mean())
+        occupied_slice_fraction = float(result.occupied_mask[z_index].mean())
+        st.metric("Slice depth", f"{z_um:.3f} um")
+        st.metric("Occupied on slice", _format_percent(occupied_slice_fraction))
+        st.metric("Live mask on slice", _format_percent(live_slice_fraction))
+        st.metric("Dead mask on slice", _format_percent(dead_slice_fraction))
+        st.caption(
+            f"Thresholds: {live_channel}={result.live.threshold:.6g}, "
+            f"{dead_channel}={result.dead.threshold:.6g}"
+        )
+
+    live_image = stack.channel(live_channel)
+    dead_image = stack.channel(dead_channel)
+    live_slice = live_image[z_index]
+    dead_slice = dead_image[z_index]
+    live_mask = result.live.mask[z_index]
+    dead_mask = result.dead.mask[z_index]
+
+    with display:
+        if preview_mode == "Raw channels":
+            live_col, dead_col = st.columns(2)
+            with live_col:
+                st.plotly_chart(
+                    _slice_preview_figure(
+                        f"Raw {live_channel} z={z_index}",
+                        _grayscale_rgb(live_slice, lower_percentile, upper_percentile),
+                    ),
+                    use_container_width=True,
+                )
+            with dead_col:
+                st.plotly_chart(
+                    _slice_preview_figure(
+                        f"Raw {dead_channel} z={z_index}",
+                        _grayscale_rgb(dead_slice, lower_percentile, upper_percentile),
+                    ),
+                    use_container_width=True,
+                )
+        elif preview_mode == "Live overlay":
+            st.plotly_chart(
+                _slice_preview_figure(
+                    f"{live_channel} raw signal with live mask overlay",
+                    _overlay_masks_rgb(
+                        live_slice,
+                        [(live_mask, (0, 255, 0))],
+                        overlay_opacity,
+                        lower_percentile,
+                        upper_percentile,
+                    ),
+                ),
+                use_container_width=True,
+            )
+        elif preview_mode == "Dead overlay":
+            st.plotly_chart(
+                _slice_preview_figure(
+                    f"{dead_channel} raw signal with dead mask overlay",
+                    _overlay_masks_rgb(
+                        dead_slice,
+                        [(dead_mask, (255, 0, 0))],
+                        overlay_opacity,
+                        lower_percentile,
+                        upper_percentile,
+                    ),
+                ),
+                use_container_width=True,
+            )
+        else:
+            merged_base = np.maximum(
+                _normalize_slice_uint8(live_slice, lower_percentile, upper_percentile),
+                _normalize_slice_uint8(dead_slice, lower_percentile, upper_percentile),
+            )
+            live_only = np.logical_and(live_mask, ~dead_mask)
+            dead_only = np.logical_and(dead_mask, ~live_mask)
+            overlap = np.logical_and(live_mask, dead_mask)
+            st.plotly_chart(
+                _slice_preview_figure(
+                    "Merged raw signal with live/dead segmentation overlay",
+                    _overlay_masks_rgb(
+                        merged_base,
+                        [
+                            (live_only, (0, 255, 0)),
+                            (dead_only, (255, 0, 0)),
+                            (overlap, (255, 225, 0)),
+                        ],
+                        overlay_opacity,
+                        0,
+                        100,
+                    ),
+                ),
+                use_container_width=True,
+            )
+            st.caption("Overlay colors: live-only green, dead-only red, overlap yellow.")
+
+
 def _stats_dataframe(stats: dict[str, object]) -> pd.DataFrame:
     labels = {
         "source_name": "Source",
@@ -378,6 +509,68 @@ def _z_profile_dataframe(profile_rows: Iterable[object]) -> pd.DataFrame:
 
 def _object_dataframe(object_rows: Iterable[object]) -> pd.DataFrame:
     return pd.DataFrame([row.as_dict() for row in object_rows])
+
+
+def _normalize_slice_uint8(
+    image_slice: np.ndarray,
+    lower_percentile: float,
+    upper_percentile: float,
+) -> np.ndarray:
+    image = np.asarray(image_slice, dtype=np.float32)
+    finite = image[np.isfinite(image)]
+    if finite.size == 0:
+        return np.zeros(image.shape, dtype=np.uint8)
+
+    low = float(np.percentile(finite, lower_percentile))
+    high = float(np.percentile(finite, upper_percentile))
+    if high <= low:
+        high = float(finite.max())
+        low = float(finite.min())
+    if high <= low:
+        return np.zeros(image.shape, dtype=np.uint8)
+
+    normalized = np.clip((image - low) / (high - low), 0, 1)
+    return (normalized * 255).astype(np.uint8)
+
+
+def _grayscale_rgb(
+    image_slice: np.ndarray,
+    lower_percentile: float,
+    upper_percentile: float,
+) -> np.ndarray:
+    gray = _normalize_slice_uint8(image_slice, lower_percentile, upper_percentile)
+    return np.repeat(gray[:, :, np.newaxis], 3, axis=2)
+
+
+def _overlay_masks_rgb(
+    image_slice: np.ndarray,
+    masks_and_colors: list[tuple[np.ndarray, tuple[int, int, int]]],
+    overlay_opacity: float,
+    lower_percentile: float,
+    upper_percentile: float,
+) -> np.ndarray:
+    rgb = _grayscale_rgb(image_slice, lower_percentile, upper_percentile).astype(np.float32)
+    alpha = float(np.clip(overlay_opacity, 0, 1))
+    for mask, color in masks_and_colors:
+        mask_bool = np.asarray(mask, dtype=bool)
+        if not np.any(mask_bool):
+            continue
+        color_array = np.array(color, dtype=np.float32)
+        rgb[mask_bool] = (1 - alpha) * rgb[mask_bool] + alpha * color_array
+    return np.clip(rgb, 0, 255).astype(np.uint8)
+
+
+def _slice_preview_figure(title: str, rgb_image: np.ndarray) -> go.Figure:
+    fig = go.Figure(data=go.Image(z=rgb_image))
+    fig.update_layout(
+        title=title,
+        xaxis_title="X",
+        yaxis_title="Y",
+        height=620,
+        margin={"l": 0, "r": 0, "b": 0, "t": 40},
+    )
+    fig.update_yaxes(scaleanchor="x")
+    return fig
 
 
 def _z_profile_figure(profile_df: pd.DataFrame) -> go.Figure:

@@ -16,6 +16,11 @@ z-stacks. It is designed for AO/PI live-dead staining workflows.
   - Minimum 3D object size
   - Optional 3D opening and closing for speckle removal or gap filling
   - Hole filling
+- Preview segmentation choices on individual z-slices:
+  - Raw AO and PI views
+  - Live, dead, and merged mask overlays
+  - Adjustable overlay opacity and display contrast
+  - Per-slice occupied/live/dead mask percentages
 - Display quantitative biofilm statistics:
   - Live, dead, live-only, dead-only, and overlapping voxels
   - Biofilm density
@@ -58,6 +63,16 @@ ports can open the Streamlit UI in a browser.
 For a quick visual smoke test, choose **Demo synthetic stack** in the sidebar.
 The app will immediately segment a generated AO/PI biofilm volume and display
 statistics plus live, dead, and merged 3D reconstructions.
+
+## Real-time segmentation preview
+
+After loading a stack, use the **Real-time segmentation preview** section near
+the top of the app to inspect a selected z-slice. Change the thresholding,
+smoothing, background subtraction, object-size filtering, opening/closing, or
+hole-filling controls in the sidebar; the slice overlay updates on rerun so you
+can tune the segmentation before relying on the final statistics. The preview
+supports raw channel views, live-only overlay, dead-only overlay, and merged
+live/dead overlay.
 
 ## Generate demo PNG data
 
