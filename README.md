@@ -6,7 +6,7 @@ z-stacks. It is designed for AO/PI live-dead staining workflows.
 
 ## Features
 
-- Load Nikon ND2 files or grayscale PNG stacks.
+- Load a built-in synthetic demo stack, Nikon ND2 files, or grayscale PNG stacks.
 - Infer live/dead PNG channels from filename labels such as `AO` and `PI`.
 - Select the live stain channel (AO) and dead stain channel (PI).
 - Configure segmentation:
@@ -31,14 +31,34 @@ z-stacks. It is designed for AO/PI live-dead staining workflows.
 ## Installation
 
 ```bash
-python -m pip install -e ".[dev]"
+scripts/setup_environment.sh
+source .venv/bin/activate
 ```
 
 ## Run the GUI
 
 ```bash
-streamlit run src/biofilm_analyzer/app.py
+scripts/run_app.sh
 ```
+
+The app listens on `0.0.0.0:8501` by default so cloud workspaces and forwarded
+ports can open the Streamlit UI in a browser.
+
+For a quick visual smoke test, choose **Demo synthetic stack** in the sidebar.
+The app will immediately segment a generated AO/PI biofilm volume and display
+statistics plus live, dead, and merged 3D reconstructions.
+
+## Generate demo PNG data
+
+To create uploadable PNG slices that follow the expected naming convention:
+
+```bash
+make demo-data
+```
+
+This writes files such as `demo_data/png_stack/demo_AO_z001.png` and
+`demo_data/png_stack/demo_PI_z001.png`. In the GUI, choose **PNG stack** and
+upload the generated files to exercise the file-upload workflow.
 
 ## PNG stack naming
 
@@ -68,5 +88,5 @@ and position index in the sidebar before analysis.
 Run tests with:
 
 ```bash
-pytest
+make test
 ```

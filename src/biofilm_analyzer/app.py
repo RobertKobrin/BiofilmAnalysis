@@ -12,6 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from biofilm_analyzer.analysis import SegmentationOptions, analyze_biofilm
+from biofilm_analyzer.demo import create_demo_stack
 from biofilm_analyzer.io import BiofilmStack, load_nd2_stack, load_png_stack
 
 
@@ -23,7 +24,7 @@ def main() -> None:
         "filename-labeled PNG z-stacks."
     )
 
-    input_mode = st.sidebar.radio("Input format", ["PNG stack", "ND2 file"])
+    input_mode = st.sidebar.radio("Input format", ["Demo synthetic stack", "PNG stack", "ND2 file"])
     voxel_size_um = (
         st.sidebar.number_input("Z spacing (um)", min_value=0.001, value=1.0, step=0.1),
         st.sidebar.number_input("Y pixel size (um)", min_value=0.001, value=1.0, step=0.1),
@@ -103,6 +104,19 @@ def _load_stack(
     input_mode: str,
     voxel_size_um: tuple[float, float, float],
 ) -> BiofilmStack | None:
+    if input_mode == "Demo synthetic stack":
+        st.sidebar.header("Demo data")
+        z_slices = st.sidebar.slider("Demo z-slices", min_value=8, max_value=64, value=28, step=2)
+        image_size = st.sidebar.slider("Demo x/y size", min_value=48, max_value=160, value=96, step=8)
+        seed = st.sidebar.number_input("Demo random seed", min_value=0, value=7, step=1)
+        return create_demo_stack(
+            z_slices=int(z_slices),
+            height=int(image_size),
+            width=int(image_size),
+            seed=int(seed),
+            voxel_size_um=voxel_size_um,
+        )
+
     if input_mode == "ND2 file":
         uploaded = st.sidebar.file_uploader("Upload ND2 file", type=["nd2"])
         time_index = st.sidebar.number_input("Time index", min_value=0, value=0, step=1)
@@ -150,7 +164,12 @@ def _load_stack(
 
 def _show_getting_started(input_mode: str) -> None:
     st.info("Upload image data in the sidebar to begin.")
-    if input_mode == "PNG stack":
+    if input_mode == "Demo synthetic stack":
+        st.markdown(
+            "The demo mode generates a synthetic AO/PI biofilm volume and should "
+            "display statistics plus live, dead, and merged 3D reconstructions immediately."
+        )
+    elif input_mode == "PNG stack":
         st.markdown(
             """
             **PNG stack naming convention**
