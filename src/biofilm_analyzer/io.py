@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+from collections.abc import Mapping as MappingABC, Sequence as SequenceABC
 from typing import Mapping, Sequence
 
 import numpy as np
@@ -117,12 +118,14 @@ def load_nd2_stack(
     *,
     time_index: int = 0,
     position_index: int = 0,
-    voxel_size_um: tuple[float, float, float] = (1.0, 1.0, 1.0),
+    voxel_size_um: tuple[float, float, float] | None = None,
 ) -> BiofilmStack:
     """Load an ND2 file and normalize it to ``(z, y, x, channel)``.
 
     The ``nd2`` package is imported lazily so the PNG workflow remains usable in
-    environments that do not have Nikon ND2 support installed.
+    environments that do not have Nikon ND2 support installed. If
+    ``voxel_size_um`` is not supplied, physical pixel calibration is read from
+    ND2 metadata when available.
     """
 
     try:
@@ -138,6 +141,7 @@ def load_nd2_stack(
         array = nd2_file.asarray()
         axes = "".join(str(axis).upper() for axis in nd2_file.sizes.keys())
         channel_names = _nd2_channel_names(nd2_file, array, axes)
+        metadata_voxel_size = _nd2_voxel_size_um(nd2_file)
 
     data = _coerce_to_zyxc(
         np.asarray(array),
@@ -153,7 +157,7 @@ def load_nd2_stack(
         data=data,
         channel_names=channel_names,
         source_name=nd2_path.name,
-        voxel_size_um=voxel_size_um,
+        voxel_size_um=voxel_size_um or metadata_voxel_size or (1.0, 1.0, 1.0),
     )
 
 
@@ -221,6 +225,114 @@ def _nd2_channel_names(nd2_file: object, array: np.ndarray, axes: str) -> tuple[
 
     channel_count = array.shape[axes.index("C")] if "C" in axes else 1
     return tuple(f"Channel {index + 1}" for index in range(channel_count))
+
+
+def _nd2_voxel_size_um(nd2_file: object) -> tuple[float, float, float] | None:
+    """Extract ND2 voxel size as ``(z, y, x)`` microns when metadata exists."""
+
+    try:
+        voxel_size = nd2_file.voxel_size()  # type: ignore[attr-defined]
+    except Exception:
+        voxel_size = None
+    parsed = _calibration_to_zyx_um(voxel_size)
+    if parsed is not None:
+        return parsed
+
+    for volume in _nd2_volume_metadata_candidates(nd2_file):
+        calibration = getattr(volume, "axesCalibration", None)
+        axes = getattr(volume, "axes", None)
+        parsed = _calibration_to_zyx_um(calibration, axes=axes)
+        if parsed is not None:
+            return parsed
+
+    return None
+
+
+def _nd2_volume_metadata_candidates(nd2_file: object) -> tuple[object, ...]:
+    candidates: list[object] = []
+    metadata = getattr(nd2_file, "metadata", None)
+    if metadata is None:
+        return tuple()
+
+    volume = getattr(metadata, "volume", None)
+    if volume is not None:
+        candidates.append(volume)
+
+    channels = getattr(metadata, "channels", None)
+    if channels is not None:
+        for channel in channels:
+            volume = getattr(channel, "volume", None)
+            if volume is not None:
+                candidates.append(volume)
+
+    return tuple(candidates)
+
+
+def _calibration_to_zyx_um(
+    calibration: object,
+    *,
+    axes: object | None = None,
+) -> tuple[float, float, float] | None:
+    xyz = _calibration_to_xyz_um(calibration, axes=axes)
+    if xyz is None:
+        return None
+    x_um, y_um, z_um = xyz
+    return (z_um, y_um, x_um)
+
+
+def _calibration_to_xyz_um(
+    calibration: object,
+    *,
+    axes: object | None = None,
+) -> tuple[float, float, float] | None:
+    if calibration is None:
+        return None
+
+    axis_values: dict[str, float] = {}
+    for axis_name in ("x", "y", "z"):
+        value = _positive_float_or_none(getattr(calibration, axis_name, None))
+        if value is None:
+            value = _positive_float_or_none(getattr(calibration, axis_name.upper(), None))
+        if value is not None:
+            axis_values[axis_name] = value
+
+    if len(axis_values) == 3:
+        return (axis_values["x"], axis_values["y"], axis_values["z"])
+
+    if isinstance(calibration, MappingABC):
+        mapped = {
+            axis_name: _positive_float_or_none(calibration.get(axis_name) or calibration.get(axis_name.upper()))
+            for axis_name in ("x", "y", "z")
+        }
+        if all(value is not None for value in mapped.values()):
+            return (float(mapped["x"]), float(mapped["y"]), float(mapped["z"]))
+
+    if isinstance(calibration, SequenceABC) and not isinstance(calibration, (str, bytes)):
+        values = [_positive_float_or_none(value) for value in calibration]
+        if len(values) < 3 or any(value is None for value in values[:3]):
+            return None
+        axis_order = str(axes).lower() if axes is not None else "xyz"
+        if all(axis in axis_order for axis in "xyz"):
+            mapped = {
+                axis_order[index]: float(value)
+                for index, value in enumerate(values)
+                if index < len(axis_order) and axis_order[index] in "xyz" and value is not None
+            }
+            if all(axis in mapped for axis in "xyz"):
+                return (mapped["x"], mapped["y"], mapped["z"])
+        return (float(values[0]), float(values[1]), float(values[2]))
+
+    return None
+
+
+def _positive_float_or_none(value: object) -> float | None:
+    try:
+        numeric = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if numeric > 0 and np.isfinite(numeric):
+        return numeric
+    return None
 
 
 def _coerce_to_zyxc(

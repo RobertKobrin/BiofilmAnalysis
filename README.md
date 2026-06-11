@@ -94,6 +94,13 @@ ND2 support uses the `nd2` Python package. The importer normalizes image data to
 `z, y, x, channel` order. For time-lapse or multi-position files, select the time
 and position index in the sidebar before analysis.
 
+By default, ND2 input reads physical calibration from the file metadata and uses
+it for volume, thickness, surface area, diffusion distance, and object-size
+statistics. The GUI displays the voxel size actually used after loading. If an
+ND2 file is missing calibration metadata, the app falls back to `1.0 um` for
+z/y/x; uncheck **Read z spacing and x/y pixel size from ND2 metadata** in the
+sidebar to enter manual calibration values instead.
+
 ## Development
 
 Run tests with:

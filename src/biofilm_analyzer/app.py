@@ -25,13 +25,9 @@ def main() -> None:
     )
 
     input_mode = st.sidebar.radio("Input format", ["Demo synthetic stack", "PNG stack", "ND2 file"])
-    voxel_size_um = (
-        st.sidebar.number_input("Z spacing (um)", min_value=0.001, value=1.0, step=0.1),
-        st.sidebar.number_input("Y pixel size (um)", min_value=0.001, value=1.0, step=0.1),
-        st.sidebar.number_input("X pixel size (um)", min_value=0.001, value=1.0, step=0.1),
-    )
+    voxel_size_um, use_nd2_metadata_calibration = _voxel_size_controls(input_mode)
 
-    stack = _load_stack(input_mode, voxel_size_um)
+    stack = _load_stack(input_mode, voxel_size_um, use_nd2_metadata_calibration)
     if stack is None:
         _show_getting_started(input_mode)
         return
@@ -39,6 +35,12 @@ def main() -> None:
     st.success(
         f"Loaded {stack.source_name}: z={stack.shape[0]}, y={stack.shape[1]}, "
         f"x={stack.shape[2]}, channels={', '.join(stack.channel_names)}"
+    )
+    st.caption(
+        "Voxel size used for statistics: "
+        f"z={stack.voxel_size_um[0]:.6g} um, "
+        f"y={stack.voxel_size_um[1]:.6g} um, "
+        f"x={stack.voxel_size_um[2]:.6g} um"
     )
 
     live_channel, dead_channel = _channel_controls(stack)
@@ -139,7 +141,8 @@ def main() -> None:
 
 def _load_stack(
     input_mode: str,
-    voxel_size_um: tuple[float, float, float],
+    voxel_size_um: tuple[float, float, float] | None,
+    use_nd2_metadata_calibration: bool,
 ) -> BiofilmStack | None:
     if input_mode == "Demo synthetic stack":
         st.sidebar.header("Demo data")
@@ -151,7 +154,7 @@ def _load_stack(
             height=int(image_size),
             width=int(image_size),
             seed=int(seed),
-            voxel_size_um=voxel_size_um,
+            voxel_size_um=voxel_size_um or (1.0, 1.0, 1.0),
         )
 
     if input_mode == "ND2 file":
@@ -167,7 +170,7 @@ def _load_stack(
                 path,
                 time_index=int(time_index),
                 position_index=int(position_index),
-                voxel_size_um=voxel_size_um,
+                voxel_size_um=None if use_nd2_metadata_calibration else voxel_size_um,
             )
 
     uploaded_files = st.sidebar.file_uploader(
@@ -194,9 +197,34 @@ def _load_stack(
         return load_png_stack(
             paths,
             channel_aliases=aliases,
-            voxel_size_um=voxel_size_um,
+            voxel_size_um=voxel_size_um or (1.0, 1.0, 1.0),
             source_name=f"{len(paths)} PNG slices",
         )
+
+
+def _voxel_size_controls(input_mode: str) -> tuple[tuple[float, float, float] | None, bool]:
+    st.sidebar.header("Voxel calibration")
+    use_nd2_metadata = False
+    if input_mode == "ND2 file":
+        use_nd2_metadata = st.sidebar.checkbox(
+            "Read z spacing and x/y pixel size from ND2 metadata",
+            value=True,
+            help="Uses physical calibration embedded by the microscope when available.",
+        )
+        if use_nd2_metadata:
+            st.sidebar.caption(
+                "If calibration cannot be read from the ND2 file, the app falls back to 1.0 um for z/y/x."
+            )
+            return None, True
+
+    return (
+        (
+            st.sidebar.number_input("Z spacing (um)", min_value=0.001, value=1.0, step=0.1),
+            st.sidebar.number_input("Y pixel size (um)", min_value=0.001, value=1.0, step=0.1),
+            st.sidebar.number_input("X pixel size (um)", min_value=0.001, value=1.0, step=0.1),
+        ),
+        use_nd2_metadata,
+    )
 
 
 def _show_getting_started(input_mode: str) -> None:
