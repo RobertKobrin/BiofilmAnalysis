@@ -240,12 +240,12 @@ def segment_channel(
     threshold = _threshold(processed, channel_name, segmentation_options)
     mask = processed > threshold
     if segmentation_options.opening_radius_voxels > 0:
-        mask = morphology.binary_opening(
+        mask = morphology.opening(
             mask,
             footprint=morphology.ball(segmentation_options.opening_radius_voxels),
         )
     if segmentation_options.closing_radius_voxels > 0:
-        mask = morphology.binary_closing(
+        mask = morphology.closing(
             mask,
             footprint=morphology.ball(segmentation_options.closing_radius_voxels),
         )
