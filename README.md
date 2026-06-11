@@ -51,6 +51,33 @@ z-stacks. It is designed for AO/PI live-dead staining workflows.
 
 ## Installation
 
+### Windows
+
+Install Git for Windows and Python 3 first. During Python installation, check
+**Add python.exe to PATH**.
+
+Open **PowerShell**, then run:
+
+```powershell
+git clone https://github.com/RobertKobrin/BiofilmAnalysis.git
+cd BiofilmAnalysis
+powershell -ExecutionPolicy Bypass -File scripts\setup_windows.ps1
+powershell -ExecutionPolicy Bypass -File scripts\install_windows_shortcut.ps1
+```
+
+After that, double-click **BiofilmAnalysis** on your Desktop. The shortcut starts
+the local Streamlit app and opens it in your default browser.
+
+To run without installing a shortcut:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run_app_windows.ps1
+```
+
+Then open `http://localhost:8501`.
+
+### Linux
+
 ```bash
 scripts/setup_environment.sh
 source .venv/bin/activate

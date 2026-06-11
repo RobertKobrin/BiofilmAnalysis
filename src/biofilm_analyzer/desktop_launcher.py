@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import socket
 import subprocess
@@ -50,7 +51,7 @@ def main() -> int:
             command,
             stdout=log_file,
             stderr=subprocess.STDOUT,
-            start_new_session=True,
+            **_background_process_kwargs(),
         )
 
     if not _wait_for_server(args.host, args.port):
@@ -89,6 +90,15 @@ def _log_path() -> Path:
     root = Path.home() / ".biofilm-analysis"
     root.mkdir(parents=True, exist_ok=True)
     return root / "desktop-launcher.log"
+
+
+def _background_process_kwargs() -> dict[str, object]:
+    if os.name == "nt":
+        creationflags = 0
+        creationflags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        creationflags |= getattr(subprocess, "DETACHED_PROCESS", 0)
+        return {"creationflags": creationflags}
+    return {"start_new_session": True}
 
 
 if __name__ == "__main__":
