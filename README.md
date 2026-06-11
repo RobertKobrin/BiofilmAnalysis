@@ -61,20 +61,34 @@ Open **PowerShell**, then run:
 ```powershell
 git clone https://github.com/RobertKobrin/BiofilmAnalysis.git
 cd BiofilmAnalysis
-powershell -ExecutionPolicy Bypass -File scripts\setup_windows.ps1
-powershell -ExecutionPolicy Bypass -File scripts\install_windows_shortcut.ps1
 ```
 
-After that, double-click **BiofilmAnalysis** on your Desktop. The shortcut starts
-the local Streamlit app and opens it in your default browser.
+Then double-click:
+
+```text
+BiofilmAnalysis-Setup-Windows.bat
+```
+
+The setup launcher creates the Python environment, installs dependencies, and
+adds a **BiofilmAnalysis** shortcut on your Desktop. After setup, double-click
+the Desktop shortcut to start the local Streamlit app and open it in your
+default browser.
 
 To run without installing a shortcut:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\run_app_windows.ps1
+```text
+BiofilmAnalysis-Launch-Windows.bat
 ```
 
 Then open `http://localhost:8501`.
+
+The underlying comprehensive launcher is `scripts\windows_launcher.ps1`. It can
+repair a missing environment, install the shortcut, or launch the app:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows_launcher.ps1 -Setup -InstallShortcut
+powershell -ExecutionPolicy Bypass -File scripts\windows_launcher.ps1 -Launch
+```
 
 ### Linux
 
