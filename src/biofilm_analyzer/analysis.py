@@ -254,7 +254,7 @@ def segment_channel(
     if segmentation_options.min_object_size_voxels > 1:
         mask = morphology.remove_small_objects(
             mask.astype(bool),
-            min_size=segmentation_options.min_object_size_voxels,
+            max_size=segmentation_options.min_object_size_voxels - 1,
             connectivity=1,
         )
 
