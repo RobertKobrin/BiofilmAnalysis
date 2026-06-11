@@ -21,6 +21,11 @@ z-stacks. It is designed for AO/PI live-dead staining workflows.
   - Live, dead, and merged mask overlays
   - Adjustable overlay opacity and display contrast
   - Per-slice occupied/live/dead mask percentages
+- Navigate a guided analysis workflow:
+  - Overview dashboard
+  - Segmentation tuning
+  - Quantification/export tables
+  - 3D reconstructions
 - Display quantitative biofilm statistics:
   - Live, dead, live-only, dead-only, and overlapping voxels
   - Biofilm density
@@ -63,6 +68,10 @@ ports can open the Streamlit UI in a browser.
 For a quick visual smoke test, choose **Demo synthetic stack** in the sidebar.
 The app will immediately segment a generated AO/PI biofilm volume and display
 statistics plus live, dead, and merged 3D reconstructions.
+
+The interface is organized around a guided workflow: use the sidebar to select
+data, calibration, channels, and segmentation settings, then move through the
+main tabs for overview, segmentation tuning, quantification, and 3D review.
 
 ## Real-time segmentation preview
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from html import escape
 from pathlib import Path
 import tempfile
 from typing import Iterable
@@ -17,13 +18,17 @@ from biofilm_analyzer.io import BiofilmStack, load_nd2_stack, load_png_stack
 
 
 def main() -> None:
-    st.set_page_config(page_title="Biofilm 3D Analyzer", layout="wide")
-    st.title("3D Biofilm Segmentation and Analysis")
-    st.caption(
-        "Analyze AO/PI live-dead biofilm stacks from Nikon ND2 files or "
-        "filename-labeled PNG z-stacks."
+    st.set_page_config(
+        page_title="BiofilmAnalysis",
+        page_icon=":microscope:",
+        layout="wide",
+        initial_sidebar_state="expanded",
     )
+    _apply_theme()
+    _hero_header()
+    _sidebar_intro()
 
+    st.sidebar.markdown("### 1. Data source")
     input_mode = st.sidebar.radio("Input format", ["Demo synthetic stack", "PNG stack", "ND2 file"])
     voxel_size_um, use_nd2_metadata_calibration = _voxel_size_controls(input_mode)
 
@@ -32,16 +37,7 @@ def main() -> None:
         _show_getting_started(input_mode)
         return
 
-    st.success(
-        f"Loaded {stack.source_name}: z={stack.shape[0]}, y={stack.shape[1]}, "
-        f"x={stack.shape[2]}, channels={', '.join(stack.channel_names)}"
-    )
-    st.caption(
-        "Voxel size used for statistics: "
-        f"z={stack.voxel_size_um[0]:.6g} um, "
-        f"y={stack.voxel_size_um[1]:.6g} um, "
-        f"x={stack.voxel_size_um[2]:.6g} um"
-    )
+    _stack_status_card(stack)
 
     live_channel, dead_channel = _channel_controls(stack)
     options = _segmentation_controls(stack, live_channel, dead_channel)
@@ -57,32 +53,204 @@ def main() -> None:
         st.error(f"Analysis failed: {exc}")
         return
 
-    _segmentation_preview_section(stack, result, live_channel, dead_channel)
-
     stats_df = _stats_dataframe(result.statistics.as_dict())
-    left, right = st.columns([0.45, 0.55], gap="large")
+    profile_df = _z_profile_dataframe(result.z_profile)
+    object_df = _object_dataframe(result.object_statistics)
+
+    overview_tab, preview_tab, quant_tab, recon_tab = st.tabs(
+        ["Overview", "Tune segmentation", "Quantification", "3D reconstructions"]
+    )
+    with overview_tab:
+        _overview_section(result, profile_df)
+    with preview_tab:
+        _segmentation_preview_section(stack, result, live_channel, dead_channel)
+    with quant_tab:
+        _quantification_section(stats_df, profile_df, object_df, result)
+    with recon_tab:
+        _reconstruction_section(result)
+
+
+def _apply_theme() -> None:
+    st.markdown(
+        """
+        <style>
+        :root {
+            --biofilm-navy: #102033;
+            --biofilm-blue: #1f77b4;
+            --biofilm-green: #2fbf71;
+            --biofilm-red: #ef5350;
+            --biofilm-gold: #f3d44e;
+            --biofilm-muted: #667085;
+        }
+        .block-container {
+            padding-top: 1.4rem;
+            padding-bottom: 3rem;
+        }
+        [data-testid="stSidebar"] {
+            border-right: 1px solid rgba(16, 32, 51, 0.08);
+        }
+        .biofilm-hero {
+            background: linear-gradient(135deg, #102033 0%, #17456b 56%, #1f7a72 100%);
+            color: #f8fbff;
+            border-radius: 24px;
+            padding: 1.45rem 1.65rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 18px 40px rgba(16, 32, 51, 0.14);
+        }
+        .biofilm-hero h1 {
+            color: #f8fbff;
+            margin: 0;
+            font-size: 2.2rem;
+            letter-spacing: -0.03em;
+        }
+        .biofilm-hero p {
+            color: rgba(248, 251, 255, 0.86);
+            max-width: 920px;
+            margin: 0.45rem 0 0;
+            font-size: 1rem;
+        }
+        .biofilm-pill-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            margin-top: 0.9rem;
+        }
+        .biofilm-pill {
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            border-radius: 999px;
+            color: #f8fbff;
+            padding: 0.25rem 0.65rem;
+            font-size: 0.82rem;
+        }
+        .biofilm-step {
+            border-left: 3px solid #2fbf71;
+            padding-left: 0.75rem;
+            color: #344054;
+            margin: 0.35rem 0;
+            font-size: 0.92rem;
+        }
+        .biofilm-status {
+            border: 1px solid rgba(16, 32, 51, 0.1);
+            border-radius: 18px;
+            padding: 0.9rem 1rem;
+            margin: 0.9rem 0 1rem;
+            background: #fbfcfe;
+        }
+        .biofilm-status strong {
+            color: #102033;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _hero_header() -> None:
+    st.markdown(
+        """
+        <div class="biofilm-hero">
+            <h1>BiofilmAnalysis</h1>
+            <p>
+                Segment AO/PI live-dead biofilm stacks, tune masks slice-by-slice,
+                and export COMSTAT-style 3D statistics from a streamlined research UI.
+            </p>
+            <div class="biofilm-pill-row">
+                <span class="biofilm-pill">ND2 + PNG stacks</span>
+                <span class="biofilm-pill">Real-time slice preview</span>
+                <span class="biofilm-pill">Live/dead quantification</span>
+                <span class="biofilm-pill">Interactive 3D views</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _sidebar_intro() -> None:
+    st.sidebar.title("BiofilmAnalysis")
+    st.sidebar.caption("Work left-to-right: load data, confirm calibration, choose channels, tune segmentation.")
+    st.sidebar.markdown(
+        """
+        <div class="biofilm-step"><strong>1.</strong> Load a stack</div>
+        <div class="biofilm-step"><strong>2.</strong> Confirm voxel size</div>
+        <div class="biofilm-step"><strong>3.</strong> Select AO/PI channels</div>
+        <div class="biofilm-step"><strong>4.</strong> Tune masks in preview</div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.sidebar.divider()
+
+
+def _stack_status_card(stack: BiofilmStack) -> None:
+    source_name = escape(stack.source_name)
+    channel_names = escape(", ".join(stack.channel_names))
+    st.markdown(
+        f"""
+        <div class="biofilm-status">
+            <strong>Loaded:</strong> {source_name}
+            &nbsp; | &nbsp; <strong>Volume:</strong> z={stack.shape[0]}, y={stack.shape[1]}, x={stack.shape[2]}
+            &nbsp; | &nbsp; <strong>Channels:</strong> {channel_names}
+            <br/>
+            <strong>Voxel size:</strong>
+            z={stack.voxel_size_um[0]:.6g} um,
+            y={stack.voxel_size_um[1]:.6g} um,
+            x={stack.voxel_size_um[2]:.6g} um
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _overview_section(result: BiofilmAnalysisResult, profile_df: pd.DataFrame) -> None:
+    st.subheader("Analysis overview")
+    st.caption("High-level live/dead state and COMSTAT-style morphology at a glance.")
+    metric_columns = st.columns(6)
+    metrics = [
+        ("Density", _format_percent(result.statistics.density_fraction)),
+        ("Live", _format_percent(result.statistics.live_fraction_of_occupied)),
+        ("Dead", _format_percent(result.statistics.dead_fraction_of_occupied)),
+        ("Biovolume", f"{result.statistics.biovolume_um3:,.2f} um3"),
+        ("Coverage", _format_percent(result.statistics.substratum_coverage_fraction)),
+        ("Roughness", f"{result.statistics.roughness_coefficient:.3f}"),
+    ]
+    for column, (label, value) in zip(metric_columns, metrics):
+        column.metric(label, value)
+
+    left, right = st.columns([0.55, 0.45], gap="large")
     with left:
-        st.subheader("Biofilm statistics")
+        st.plotly_chart(_z_profile_figure(profile_df), use_container_width=True)
+    with right:
+        st.markdown("#### Recommended workflow")
+        st.markdown(
+            """
+            1. Open **Tune segmentation** and inspect representative top/middle/bottom slices.
+            2. Adjust thresholding, smoothing, object size, and morphology controls in the sidebar.
+            3. Return here to confirm live/dead fractions and morphology metrics.
+            4. Export tables from **Quantification** and inspect volume geometry in **3D reconstructions**.
+            """
+        )
+
+
+def _quantification_section(
+    stats_df: pd.DataFrame,
+    profile_df: pd.DataFrame,
+    object_df: pd.DataFrame,
+    result: BiofilmAnalysisResult,
+) -> None:
+    st.subheader("Quantification and exports")
+    st.caption("Download global statistics, z-profiles, thickness maps, and object-level measurements.")
+    stats_tab, profile_tab, thickness_tab, object_tab = st.tabs(
+        ["Global statistics", "Z profiles", "Thickness map", "3D objects"]
+    )
+    with stats_tab:
         st.dataframe(stats_df, use_container_width=True, hide_index=True)
         st.download_button(
-            "Download statistics CSV",
+            "Download global statistics CSV",
             data=stats_df.to_csv(index=False).encode("utf-8"),
             file_name="biofilm_statistics.csv",
             mime="text/csv",
         )
-    with right:
-        st.subheader("Segmentation summary")
-        st.metric("Biofilm density", _format_percent(result.statistics.density_fraction))
-        st.metric("Live fraction", _format_percent(result.statistics.live_fraction_of_occupied))
-        st.metric("Dead fraction", _format_percent(result.statistics.dead_fraction_of_occupied))
-        st.metric("Biovolume", f"{result.statistics.biovolume_um3:,.2f} um3")
-        st.metric("Roughness coefficient", f"{result.statistics.roughness_coefficient:.3f}")
-        st.metric("Substratum coverage", _format_percent(result.statistics.substratum_coverage_fraction))
-
-    st.subheader("COMSTAT-style profiles and object analysis")
-    profile_df = _z_profile_dataframe(result.z_profile)
-    object_df = _object_dataframe(result.object_statistics)
-    profile_tab, thickness_tab, object_tab = st.tabs(["Z profiles", "Thickness map", "3D objects"])
     with profile_tab:
         st.plotly_chart(_z_profile_figure(profile_df), use_container_width=True)
         st.dataframe(profile_df, use_container_width=True, hide_index=True)
@@ -112,18 +280,26 @@ def main() -> None:
                 mime="text/csv",
             )
 
+
+def _reconstruction_section(result: BiofilmAnalysisResult) -> None:
     st.subheader("3D reconstructions")
-    max_points = st.slider(
-        "Maximum rendered voxels per reconstruction",
-        min_value=1_000,
-        max_value=100_000,
-        value=25_000,
-        step=1_000,
-        help="Lower values keep large stacks responsive in the browser.",
-    )
-    marker_size = st.slider("3D marker size", min_value=1, max_value=8, value=2)
-    marker_opacity = st.slider("3D marker opacity", min_value=0.05, max_value=1.0, value=0.55, step=0.05)
-    live_tab, dead_tab, merge_tab = st.tabs(["Live signal (AO)", "Dead signal (PI)", "Merge"])
+    st.caption("Inspect segmented biomass in live, dead, and merged 3D views.")
+    controls = st.columns(3)
+    with controls[0]:
+        max_points = st.slider(
+            "Maximum rendered voxels",
+            min_value=1_000,
+            max_value=100_000,
+            value=25_000,
+            step=1_000,
+            help="Lower values keep large stacks responsive in the browser.",
+        )
+    with controls[1]:
+        marker_size = st.slider("Marker size", min_value=1, max_value=8, value=2)
+    with controls[2]:
+        marker_opacity = st.slider("Marker opacity", min_value=0.05, max_value=1.0, value=0.55, step=0.05)
+
+    live_tab, dead_tab, merge_tab = st.tabs(["Live signal", "Dead signal", "Merged live/dead"])
     with live_tab:
         st.plotly_chart(
             _single_channel_figure(result.live.mask, "Live signal", "green", max_points, marker_size, marker_opacity),
@@ -147,7 +323,7 @@ def _load_stack(
     use_nd2_metadata_calibration: bool,
 ) -> BiofilmStack | None:
     if input_mode == "Demo synthetic stack":
-        st.sidebar.header("Demo data")
+        st.sidebar.markdown("#### Demo stack settings")
         z_slices = st.sidebar.slider("Demo z-slices", min_value=8, max_value=64, value=28, step=2)
         image_size = st.sidebar.slider("Demo x/y size", min_value=48, max_value=160, value=96, step=8)
         seed = st.sidebar.number_input("Demo random seed", min_value=0, value=7, step=1)
@@ -205,7 +381,7 @@ def _load_stack(
 
 
 def _voxel_size_controls(input_mode: str) -> tuple[tuple[float, float, float] | None, bool]:
-    st.sidebar.header("Voxel calibration")
+    st.sidebar.markdown("### 2. Voxel calibration")
     use_nd2_metadata = False
     if input_mode == "ND2 file":
         use_nd2_metadata = st.sidebar.checkbox(
@@ -258,7 +434,7 @@ def _show_getting_started(input_mode: str) -> None:
 
 
 def _channel_controls(stack: BiofilmStack) -> tuple[str, str]:
-    st.sidebar.header("Channels")
+    st.sidebar.markdown("### 3. Channels")
     channel_names = list(stack.channel_names)
     live_default = _default_channel_index(channel_names, ("ao", "live", "green"))
     dead_default = _default_channel_index(channel_names, ("pi", "dead", "red"))
@@ -272,7 +448,7 @@ def _segmentation_controls(
     live_channel: str,
     dead_channel: str,
 ) -> SegmentationOptions:
-    st.sidebar.header("Segmentation options")
+    st.sidebar.markdown("### 4. Segmentation")
     threshold_method = st.sidebar.selectbox("Threshold method", ["otsu", "yen", "li", "manual"])
     gaussian_sigma = st.sidebar.number_input(
         "Gaussian smoothing sigma",
