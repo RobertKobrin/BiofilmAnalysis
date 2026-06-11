@@ -219,7 +219,7 @@ def _overview_section(result: BiofilmAnalysisResult, profile_df: pd.DataFrame) -
 
     left, right = st.columns([0.55, 0.45], gap="large")
     with left:
-        st.plotly_chart(_z_profile_figure(profile_df), use_container_width=True)
+        st.plotly_chart(_z_profile_figure(profile_df), width="stretch")
     with right:
         st.markdown("#### Recommended workflow")
         st.markdown(
@@ -244,7 +244,7 @@ def _quantification_section(
         ["Global statistics", "Z profiles", "Thickness map", "3D objects"]
     )
     with stats_tab:
-        st.dataframe(stats_df, use_container_width=True, hide_index=True)
+        st.dataframe(stats_df, width="stretch", hide_index=True)
         st.download_button(
             "Download global statistics CSV",
             data=stats_df.to_csv(index=False).encode("utf-8"),
@@ -252,8 +252,8 @@ def _quantification_section(
             mime="text/csv",
         )
     with profile_tab:
-        st.plotly_chart(_z_profile_figure(profile_df), use_container_width=True)
-        st.dataframe(profile_df, use_container_width=True, hide_index=True)
+        st.plotly_chart(_z_profile_figure(profile_df), width="stretch")
+        st.dataframe(profile_df, width="stretch", hide_index=True)
         st.download_button(
             "Download z-profile CSV",
             data=profile_df.to_csv(index=False).encode("utf-8"),
@@ -261,7 +261,7 @@ def _quantification_section(
             mime="text/csv",
         )
     with thickness_tab:
-        st.plotly_chart(_thickness_heatmap(result.thickness_map_um), use_container_width=True)
+        st.plotly_chart(_thickness_heatmap(result.thickness_map_um), width="stretch")
         st.download_button(
             "Download thickness map CSV",
             data=pd.DataFrame(result.thickness_map_um).to_csv(index=False).encode("utf-8"),
@@ -272,7 +272,7 @@ def _quantification_section(
         if object_df.empty:
             st.info("No connected biofilm objects were detected.")
         else:
-            st.dataframe(object_df, use_container_width=True, hide_index=True)
+            st.dataframe(object_df, width="stretch", hide_index=True)
             st.download_button(
                 "Download object statistics CSV",
                 data=object_df.to_csv(index=False).encode("utf-8"),
@@ -303,17 +303,17 @@ def _reconstruction_section(result: BiofilmAnalysisResult) -> None:
     with live_tab:
         st.plotly_chart(
             _single_channel_figure(result.live.mask, "Live signal", "green", max_points, marker_size, marker_opacity),
-            use_container_width=True,
+            width="stretch",
         )
     with dead_tab:
         st.plotly_chart(
             _single_channel_figure(result.dead.mask, "Dead signal", "red", max_points, marker_size, marker_opacity),
-            use_container_width=True,
+            width="stretch",
         )
     with merge_tab:
         st.plotly_chart(
             _merge_figure(result.live.mask, result.dead.mask, max_points, marker_size, marker_opacity),
-            use_container_width=True,
+            width="stretch",
         )
 
 
@@ -573,7 +573,7 @@ def _segmentation_preview_section(
                         f"Raw {live_channel} z={z_index}",
                         _grayscale_rgb(live_slice, lower_percentile, upper_percentile),
                     ),
-                    use_container_width=True,
+                    width="stretch",
                 )
             with dead_col:
                 st.plotly_chart(
@@ -581,7 +581,7 @@ def _segmentation_preview_section(
                         f"Raw {dead_channel} z={z_index}",
                         _grayscale_rgb(dead_slice, lower_percentile, upper_percentile),
                     ),
-                    use_container_width=True,
+                    width="stretch",
                 )
         elif preview_mode == "Live overlay":
             st.plotly_chart(
@@ -595,7 +595,7 @@ def _segmentation_preview_section(
                         upper_percentile,
                     ),
                 ),
-                use_container_width=True,
+                width="stretch",
             )
         elif preview_mode == "Dead overlay":
             st.plotly_chart(
@@ -609,7 +609,7 @@ def _segmentation_preview_section(
                         upper_percentile,
                     ),
                 ),
-                use_container_width=True,
+                width="stretch",
             )
         else:
             merged_base = np.maximum(
@@ -634,7 +634,7 @@ def _segmentation_preview_section(
                         100,
                     ),
                 ),
-                use_container_width=True,
+                width="stretch",
             )
             st.caption("Overlay colors: live-only green, dead-only red, overlap yellow.")
 
@@ -890,6 +890,8 @@ def _format_percent(value: float) -> str:
 def _format_value(value: object) -> object:
     if isinstance(value, float):
         return f"{value:.6g}"
+    if isinstance(value, (tuple, list)):
+        return ", ".join(str(_format_value(item)) for item in value)
     return value
 
 
