@@ -19,6 +19,9 @@ dependencies = [
     "streamlit",
 ]
 
+[project.scripts]
+biofilm-analysis-desktop = "biofilm_analyzer.desktop_launcher:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest",

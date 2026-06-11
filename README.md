@@ -74,6 +74,24 @@ can tune the segmentation before relying on the final statistics. The preview
 supports raw channel views, live-only overlay, dead-only overlay, and merged
 live/dead overlay.
 
+## Install a desktop icon
+
+On Linux desktops, install a clickable launcher with:
+
+```bash
+make desktop-icon
+```
+
+This creates an application-menu entry at
+`~/.local/share/applications/biofilm-analysis.desktop` and, if `~/Desktop`
+exists, a desktop icon at `~/Desktop/biofilm-analysis.desktop`. Clicking it
+starts BiofilmAnalysis on `http://127.0.0.1:8501` and opens the app in your
+default browser. If the app is already running, the launcher just opens the
+browser tab.
+
+If your desktop environment blocks newly created launchers, right-click the icon
+and choose an option such as **Allow Launching** or **Trust and Launch**.
+
 ## Generate demo PNG data
 
 To create uploadable PNG slices that follow the expected naming convention:

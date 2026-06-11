@@ -1,13 +1,16 @@
 PYTHON ?= python3
 VENV_PYTHON = .venv/bin/python
 
-.PHONY: setup run demo-data test
+.PHONY: setup run desktop-icon demo-data test
 
 setup:
 	scripts/setup_environment.sh
 
 run:
 	scripts/run_app.sh
+
+desktop-icon:
+	scripts/install_desktop_launcher.sh
 
 demo-data:
 	@if [ -x "$(VENV_PYTHON)" ]; then \
