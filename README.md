@@ -14,6 +14,7 @@ z-stacks. It is designed for AO/PI live-dead staining workflows.
   - Gaussian smoothing
   - Background percentile subtraction
   - Minimum 3D object size
+  - Optional 3D opening and closing for speckle removal or gap filling
   - Hole filling
 - Display quantitative biofilm statistics:
   - Live, dead, live-only, dead-only, and overlapping voxels
@@ -22,11 +23,21 @@ z-stacks. It is designed for AO/PI live-dead staining workflows.
   - Live/dead ratio
   - Mean live/dead signal intensity
   - Mean and maximum thickness
+  - Roughness coefficient
+  - Substratum coverage
+  - Areal biomass
   - Estimated surface area
+  - Surface-to-biovolume ratio
+  - Average and maximum diffusion distance
   - Connected component count
+- Display BiofilmQ/COMSTAT-style secondary outputs:
+  - Per-z-slice live/dead/occupied profiles
+  - Local thickness heatmap
+  - Per-object volume, centroid, bounding box, live/dead fraction, and signal
+    intensity
 - Render interactive 3D reconstructions for live signal, dead signal, and
   merged live/dead signal.
-- Export statistics as CSV.
+- Export statistics, z-profiles, thickness maps, and object tables as CSV.
 
 ## Installation
 

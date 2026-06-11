@@ -72,6 +72,41 @@ def main() -> None:
         st.metric("Live fraction", _format_percent(result.statistics.live_fraction_of_occupied))
         st.metric("Dead fraction", _format_percent(result.statistics.dead_fraction_of_occupied))
         st.metric("Biovolume", f"{result.statistics.biovolume_um3:,.2f} um3")
+        st.metric("Roughness coefficient", f"{result.statistics.roughness_coefficient:.3f}")
+        st.metric("Substratum coverage", _format_percent(result.statistics.substratum_coverage_fraction))
+
+    st.subheader("COMSTAT-style profiles and object analysis")
+    profile_df = _z_profile_dataframe(result.z_profile)
+    object_df = _object_dataframe(result.object_statistics)
+    profile_tab, thickness_tab, object_tab = st.tabs(["Z profiles", "Thickness map", "3D objects"])
+    with profile_tab:
+        st.plotly_chart(_z_profile_figure(profile_df), use_container_width=True)
+        st.dataframe(profile_df, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download z-profile CSV",
+            data=profile_df.to_csv(index=False).encode("utf-8"),
+            file_name="biofilm_z_profile.csv",
+            mime="text/csv",
+        )
+    with thickness_tab:
+        st.plotly_chart(_thickness_heatmap(result.thickness_map_um), use_container_width=True)
+        st.download_button(
+            "Download thickness map CSV",
+            data=pd.DataFrame(result.thickness_map_um).to_csv(index=False).encode("utf-8"),
+            file_name="biofilm_thickness_map_um.csv",
+            mime="text/csv",
+        )
+    with object_tab:
+        if object_df.empty:
+            st.info("No connected biofilm objects were detected.")
+        else:
+            st.dataframe(object_df, use_container_width=True, hide_index=True)
+            st.download_button(
+                "Download object statistics CSV",
+                data=object_df.to_csv(index=False).encode("utf-8"),
+                file_name="biofilm_object_statistics.csv",
+                mime="text/csv",
+            )
 
     st.subheader("3D reconstructions")
     max_points = st.slider(
@@ -82,20 +117,22 @@ def main() -> None:
         step=1_000,
         help="Lower values keep large stacks responsive in the browser.",
     )
+    marker_size = st.slider("3D marker size", min_value=1, max_value=8, value=2)
+    marker_opacity = st.slider("3D marker opacity", min_value=0.05, max_value=1.0, value=0.55, step=0.05)
     live_tab, dead_tab, merge_tab = st.tabs(["Live signal (AO)", "Dead signal (PI)", "Merge"])
     with live_tab:
         st.plotly_chart(
-            _single_channel_figure(result.live.mask, "Live signal", "green", max_points),
+            _single_channel_figure(result.live.mask, "Live signal", "green", max_points, marker_size, marker_opacity),
             use_container_width=True,
         )
     with dead_tab:
         st.plotly_chart(
-            _single_channel_figure(result.dead.mask, "Dead signal", "red", max_points),
+            _single_channel_figure(result.dead.mask, "Dead signal", "red", max_points, marker_size, marker_opacity),
             use_container_width=True,
         )
     with merge_tab:
         st.plotly_chart(
-            _merge_figure(result.live.mask, result.dead.mask, max_points),
+            _merge_figure(result.live.mask, result.dead.mask, max_points, marker_size, marker_opacity),
             use_container_width=True,
         )
 
@@ -219,6 +256,20 @@ def _segmentation_controls(
         value=64,
         step=8,
     )
+    opening_radius = st.sidebar.slider(
+        "3D opening radius (voxels)",
+        min_value=0,
+        max_value=5,
+        value=0,
+        help="Removes small protrusions and isolated bright speckles before filling holes.",
+    )
+    closing_radius = st.sidebar.slider(
+        "3D closing radius (voxels)",
+        min_value=0,
+        max_value=5,
+        value=0,
+        help="Bridges small gaps in segmented biofilm objects before filling holes.",
+    )
     fill_holes = st.sidebar.checkbox("Fill holes", value=True)
     background_percentile = st.sidebar.slider(
         "Background percentile subtraction",
@@ -246,6 +297,8 @@ def _segmentation_controls(
         gaussian_sigma=float(gaussian_sigma),
         min_object_size_voxels=int(min_size),
         fill_holes=fill_holes,
+        opening_radius_voxels=int(opening_radius),
+        closing_radius_voxels=int(closing_radius),
         background_percentile=float(background_percentile),
         manual_thresholds=manual_thresholds,
     )
@@ -273,7 +326,13 @@ def _stats_dataframe(stats: dict[str, object]) -> pd.DataFrame:
         "mean_dead_intensity_in_dead_mask": "Mean dead intensity",
         "mean_thickness_um": "Mean thickness (um)",
         "max_thickness_um": "Max thickness (um)",
+        "roughness_coefficient": "Roughness coefficient",
+        "substratum_coverage_fraction": "Substratum coverage fraction",
+        "areal_biomass_um3_per_um2": "Areal biomass (um3/um2)",
         "estimated_surface_area_um2": "Estimated surface area (um2)",
+        "surface_to_biovolume_ratio_um_inv": "Surface/biovolume ratio (1/um)",
+        "average_diffusion_distance_um": "Average diffusion distance (um)",
+        "max_diffusion_distance_um": "Max diffusion distance (um)",
         "connected_components": "Connected components",
         "live_threshold": "Live threshold",
         "dead_threshold": "Dead threshold",
@@ -285,11 +344,67 @@ def _stats_dataframe(stats: dict[str, object]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _z_profile_dataframe(profile_rows: Iterable[object]) -> pd.DataFrame:
+    return pd.DataFrame([row.as_dict() for row in profile_rows])
+
+
+def _object_dataframe(object_rows: Iterable[object]) -> pd.DataFrame:
+    return pd.DataFrame([row.as_dict() for row in object_rows])
+
+
+def _z_profile_figure(profile_df: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    series = [
+        ("occupied_area_fraction", "Occupied area fraction", "blue"),
+        ("live_area_fraction", "Live area fraction", "green"),
+        ("dead_area_fraction", "Dead area fraction", "red"),
+    ]
+    for column, label, color in series:
+        fig.add_trace(
+            go.Scatter(
+                x=profile_df["z_um"],
+                y=profile_df[column],
+                mode="lines+markers",
+                name=label,
+                line={"color": color},
+            )
+        )
+    fig.update_layout(
+        title="Per-slice biofilm profile",
+        xaxis_title="Z depth (um)",
+        yaxis_title="Area fraction",
+        yaxis_tickformat=".0%",
+        height=420,
+        margin={"l": 0, "r": 0, "b": 0, "t": 40},
+    )
+    return fig
+
+
+def _thickness_heatmap(thickness_map_um: np.ndarray) -> go.Figure:
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=thickness_map_um,
+            colorscale="Viridis",
+            colorbar={"title": "Thickness (um)"},
+        )
+    )
+    fig.update_layout(
+        title="Local biofilm thickness map",
+        xaxis_title="X",
+        yaxis_title="Y",
+        height=520,
+        margin={"l": 0, "r": 0, "b": 0, "t": 40},
+    )
+    return fig
+
+
 def _single_channel_figure(
     mask: np.ndarray,
     title: str,
     color: str,
     max_points: int,
+    marker_size: int,
+    marker_opacity: float,
 ) -> go.Figure:
     coords = _sample_coordinates(mask, max_points)
     fig = go.Figure()
@@ -299,14 +414,20 @@ def _single_channel_figure(
             y=coords[:, 1],
             z=coords[:, 0],
             mode="markers",
-            marker={"size": 2, "color": color, "opacity": 0.55},
+            marker={"size": marker_size, "color": color, "opacity": marker_opacity},
             name=title,
         )
     )
     return _style_3d_figure(fig, title)
 
 
-def _merge_figure(live_mask: np.ndarray, dead_mask: np.ndarray, max_points: int) -> go.Figure:
+def _merge_figure(
+    live_mask: np.ndarray,
+    dead_mask: np.ndarray,
+    max_points: int,
+    marker_size: int,
+    marker_opacity: float,
+) -> go.Figure:
     fig = go.Figure()
     masks = [
         ("Live only", np.logical_and(live_mask, ~dead_mask), "green"),
@@ -321,7 +442,7 @@ def _merge_figure(live_mask: np.ndarray, dead_mask: np.ndarray, max_points: int)
                 y=coords[:, 1],
                 z=coords[:, 0],
                 mode="markers",
-                marker={"size": 2, "color": color, "opacity": 0.55},
+                marker={"size": marker_size, "color": color, "opacity": marker_opacity},
                 name=label,
             )
         )
